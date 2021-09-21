@@ -1,13 +1,15 @@
 package org.acme.micrometer;
 
+import javax.ws.rs.GET;
+import javax.ws.rs.Path;
+import javax.ws.rs.Produces;
+import javax.ws.rs.core.MediaType;
+
 import java.util.LinkedList;
 import java.util.NoSuchElementException;
 import java.util.concurrent.TimeUnit;
 
-import javax.ws.rs.GET;
-import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
-import javax.ws.rs.Produces;
 
 import io.micrometer.core.annotation.Counted;
 import io.micrometer.core.annotation.Timed;
@@ -18,65 +20,44 @@ import io.micrometer.core.instrument.binder.jvm.JvmGcMetrics;
 import io.micrometer.core.instrument.binder.jvm.JvmMemoryMetrics;
 import io.micrometer.core.instrument.binder.jvm.JvmThreadMetrics;
 import io.micrometer.core.instrument.binder.system.ProcessorMetrics;
+import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
 import io.micrometer.stackdriver.StackdriverConfig;
 import io.micrometer.stackdriver.StackdriverMeterRegistry;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import io.micrometer.core.instrument.config.MeterFilter;
 
-@Path("/example")
-@Produces("text/plain")
+@Path("/")
 public class ExampleResource {
 
-    @ConfigProperty(name = "quarkus.micrometer.binder.http-server.ignore-patterns")
-    String config;
-    @ConfigProperty(name = "quarkus.micrometer.binder.http-client.enabled")
+    @ConfigProperty(name = "quarkus.micrometer.export.stackdriver.enabled")
     boolean enabled;
-    @ConfigProperty(name = "quarkus.micrometer.enabled")
-    boolean enabled2;
+    @ConfigProperty(name = "quarkus.micrometer.export.stackdriver.default-registry")
+    boolean export;
+    @ConfigProperty(name="quarkus.micrometer.export.stackdriver.project-id")
+    String projectId;
+    @ConfigProperty(name="quarkus.micrometer.export.stackdriver.publish")
+    boolean publish;
+    @ConfigProperty(name="quarkus.micrometer.export.stackdriver.resource-type")
+    String resourceType;
+    @ConfigProperty(name="quarkus.micrometer.export.stackdriver.step")
+    String step;
 
     private final MeterRegistry registry;
 
-    LinkedList<Long> list = new LinkedList<>();
-
-
-    // Update the constructor to create the gauge
-    ExampleResource(MeterRegistry registry) {
-        /* Code for micrometer */
-        StackdriverConfig stackdriverConfig = new StackdriverConfig() {
-            @Override
-            public String projectId() {
-                return "fake-id";
-            }
-
-            @Override
-            public String get(String key) {
-                return null;
-            }
-        };
-        this.registry = StackdriverMeterRegistry.builder(stackdriverConfig).build();
-        this.registry.config().commonTags("application", "fake-id");
+    ExampleResource(MeterRegistry reg) {
+        
+        this.registry = reg;
         new ClassLoaderMetrics().bindTo(this.registry);
         new JvmMemoryMetrics().bindTo(this.registry);
         new JvmGcMetrics().bindTo(this.registry);
         new ProcessorMetrics().bindTo(this.registry);
         new JvmThreadMetrics().bindTo(this.registry);
-
     }
 
     @GET
-    @Path("gauge/{number}")
-    public Long checkListSize(@PathParam("number") long number) {
-        if (number == 2 || number % 2 == 0) {
-            // add even numbers to the list
-            list.add(number);
-        } else {
-            // remove items from the list for odd numbers
-            try {
-                number = list.removeFirst();
-            } catch (NoSuchElementException nse) {
-                number = 0;
-            }
-        }
-        return number;
+    @Produces(MediaType.TEXT_PLAIN)
+    public String hello() {
+        return "Hello RESTEasy";
     }
 
     @GET
@@ -117,9 +98,14 @@ public class ExampleResource {
 
     protected boolean testPrimeNumber(long number) {
         Timer timer = registry.timer("example.test.prime.number.timer");
-        registry.gauge("quarkus_example",25); // random gauge to test gauge
+        registry.gauge("quarkus_example",25);
 
-        example(); // buffer time to test timer
+        System.out.println(registry.getMeters().toString());
+        for (Meter meter : registry.getMeters()) {
+            System.out.println(meter.getId() + " " + meter.toString());
+        }
+
+        example(); //random time
 
         return timer.record(() -> {
             for (int i = 3; i < Math.floor(Math.sqrt(number)) + 1; i = i + 2) {
@@ -154,6 +140,13 @@ public class ExampleResource {
         timer.record(System.currentTimeMillis() - start, TimeUnit.MILLISECONDS);
     }
 
+
+    @GET
+    @Path("/print")
+    public void printMeters() {
+        System.out.println(this.registry.getMeters().toString());
+        for (Meter meter : this.registry.getMeters()) {
+            System.out.println(meter.getId() + " " + meter.toString());
+        }
+    }
 }
-
-
